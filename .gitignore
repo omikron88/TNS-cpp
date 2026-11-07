@@ -1,5 +1,4 @@
 /build*/
-/dist/
 /.cache/
 /tns.config
 *.ppm
