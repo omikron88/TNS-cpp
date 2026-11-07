@@ -1,0 +1,66 @@
+name: Build and test
+on: [push, pull_request]
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        static: ['OFF', 'ON']
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxrender-dev libxss-dev libxxf86vm-dev libxinerama-dev
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTNS_STATIC=${{ matrix.static }} -DTNS_BUNDLED_SDL=${{ matrix.static }}
+      - run: cmake --build build -j2
+      - run: ctest --test-dir build --output-on-failure
+      - name: Check portable dependencies
+        if: matrix.static == 'ON'
+        run: |
+          ldd build/tns | tee build/dependencies.txt
+          if grep -E 'SDL|libstdc\+\+|libgcc_s' build/dependencies.txt; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tns-linux-static-${{ matrix.static }}
+          path: |
+            build/tns
+            LICENSE
+            THIRD_PARTY.md
+            licenses/SDL2.txt
+            README.md
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        static: ['OFF', 'ON']
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-SDL2
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTNS_STATIC=${{ matrix.static }} -DTNS_BUNDLED_SDL=${{ matrix.static }}
+      - run: cmake --build build -j2
+      - run: ctest --test-dir build --output-on-failure
+      - name: Check portable imports
+        if: matrix.static == 'ON'
+        run: |
+          objdump -p build/tns.exe | grep 'DLL Name' | tee build/dependencies.txt
+          if grep -Ei 'SDL|libstdc|libgcc|libwinpthread' build/dependencies.txt; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: matrix.static == 'ON'
+        with:
+          name: tns-windows-portable
+          path: |
+            build/tns.exe
+            LICENSE
+            THIRD_PARTY.md
+            licenses/SDL2.txt
+            README.md
